@@ -97,7 +97,7 @@ if [[ -n "${MODEL:-}" ]]; then
 fi
 
 # Datasets that require lexical format prompt (azure only)
-LEXICAL_DATASETS="mls-it"
+LEXICAL_DATASETS="mls-es"
 
 # Resolve a "dataset language" pair to the repo it lives in and its config name.
 # Sets DS_PATH and CONFIG_NAME (empty for standalone single-config repos).

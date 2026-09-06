@@ -25,7 +25,7 @@ MODEL_CONFIGS=(
     # "smallestai/pulse              16"
     # "reson8/resonant-1             16"
     # "reson8/resonant-1-flash       16"
-    # "microsoft/azure-speech-06-2026  4"
+    # "microsoft/azure-speech-07-2026  4"
     # "modulate/vfast                25"
     # "gladia/solaria-3             20"
     # "soniox/stt-async-v5           20"
@@ -57,7 +57,7 @@ if [[ -n "${MODEL:-}" ]]; then
 fi
 
 # Datasets that require lexical format prompt
-LEXICAL_DATASETS="librispeech gigaspeech"
+LEXICAL_DATASETS="earnings22_cleaned_aa_chunked gigaspeech_cleaned librispeech voxpopuli_cleaned_aa"
 
 
 RUNDIR="${REPO_ROOT}"
