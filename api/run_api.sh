@@ -22,11 +22,12 @@ MODEL_CONFIGS=(
     # "speechmatics/enhanced         4"
     # "aquavoice/avalon-v1-en        5"
     # "zoom/scribe_v1                32"
+    # "zoom/scribe_v2_pro            8"
     # "smallestai/pulse              16"
     # "reson8/resonant-1             16"
     # "reson8/resonant-1-flash       16"
     # "microsoft/azure-speech-07-2026  4"
-    # "modulate/vfast                25"
+    # "modulate/multilingual          25"
     # "gladia/solaria-3             20"
     # "soniox/stt-async-v5           20"
 )
@@ -48,17 +49,13 @@ EVAL_DATASETS=(
 )
 
 # Override EVAL_DATASETS or MODEL_CONFIGS from the environment for quick runs, e.g.:
-#   DATASETS="librispeech:test.clean" MODEL="modulate/vfast 25" bash run_api.sh
+#   DATASETS="librispeech:test.clean" MODEL="modulate/multilingual 25" bash run_api.sh
 if [[ -n "${DATASETS:-}" ]]; then
     read -ra EVAL_DATASETS <<< "$DATASETS"
 fi
 if [[ -n "${MODEL:-}" ]]; then
     MODEL_CONFIGS=("$MODEL")
 fi
-
-# Datasets that require lexical format prompt
-LEXICAL_DATASETS="earnings22_cleaned_aa_chunked gigaspeech_cleaned librispeech voxpopuli_cleaned_aa"
-
 
 RUNDIR="${REPO_ROOT}"
 HF_CACHE_DIR="${HF_HOME:-$HOME/.cache/huggingface}"
@@ -91,9 +88,6 @@ for model_cfg in "${MODEL_CONFIGS[@]}"; do
         fi
 
         PROMPT_FLAG=""
-        if [[ "$MODEL_ID" == microsoft/* ]] && [[ " $LEXICAL_DATASETS " == *" $DATASET "* ]]; then
-            PROMPT_FLAG="--prompt 'Output must be in lexical format.'"
-        fi
 
         docker run --rm \
             --user "$(id -u):$(id -g)" \
