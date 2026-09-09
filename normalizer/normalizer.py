@@ -618,61 +618,6 @@ class EnglishNameNormalizer:
         return " ".join(self.mapping.get(word, word) for word in s.split())
 
 
-class EnglishTimeNormalizer:
-    """Canonicalize explicit clock expressions before general number normalization."""
-
-    def __init__(self, number_normalizer):
-        self.number_normalizer = number_normalizer
-        digits = "|".join(word for word, value in number_normalizer.ones.items() if value < 10)
-        small_numbers = "|".join(number_normalizer.ones)
-        number = rf"(?:[0-9]{{1,2}}|(?:twenty|thirty|forty|fifty)(?:[\s-]+(?:{digits}))?|{small_numbers}|zero)"
-        clock = r"o\s*['\u2019]?\s*clock"
-        self.relative_time = re.compile(
-            rf"(?<![\w.:])(?P<amount>half|(?:a\s+)?quarter|{number}\s+minutes?)"
-            rf"\s+(?P<relation>past|after|to|before)\s+(?P<hour>{number})"
-            rf"(?:\s+{clock})?\b"
-        )
-        self.on_the_hour = re.compile(rf"(?<![\w.:])(?P<hour>{number})\s+{clock}\b")
-        self.numeric_time = re.compile(
-            r"(?<![\w:./])(?P<hour>[01]?[0-9]|2[0-3]):(?P<minute>[0-5][0-9])(?![\w:]|\.[0-9])"
-        )
-
-    def _number(self, text):
-        value = self.number_normalizer(text.replace("-", " ")).strip()
-        return 1 if value == "one" else int(value)
-
-    def _relative_time(self, match):
-        hour = self._number(match["hour"])
-        if not 0 <= hour <= 23:
-            return match.group()
-        amount = match["amount"]
-        if amount == "half":
-            minute = 30
-        elif amount.endswith("quarter"):
-            minute = 15
-        else:
-            minute = self._number(re.sub(r"\s+minutes?$", "", amount))
-        if not 0 <= minute < 60:
-            return match.group()
-        if match["relation"] in ("to", "before") and minute:
-            hour = (hour - 2) % 12 + 1 if 1 <= hour <= 12 else (hour - 1) % 24
-            minute = 60 - minute
-        return f"{hour}:{minute:02d}"
-
-    def _on_the_hour(self, match):
-        hour = self._number(match["hour"])
-        return f"{hour}:00" if 0 <= hour <= 23 else match.group()
-
-    def _numeric_time(self, match):
-        hour, minute = int(match["hour"]), int(match["minute"])
-        return str(hour) if minute == 0 else f"{hour}:{minute:02d}"
-
-    def __call__(self, text):
-        text = self.relative_time.sub(self._relative_time, text)
-        text = self.on_the_hour.sub(self._on_the_hour, text)
-        return self.numeric_time.sub(self._numeric_time, text)
-
-
 class EnglishTextNormalizer:
     def __init__(self, english_spelling_mapping=english_spelling_normalizer):
         # Filler words / hesitations to remove. Written as regexes so that
@@ -707,6 +652,13 @@ class EnglishTextNormalizer:
         ]
         self.ignore_patterns = r"\b(" + "|".join(filler_words) + r")\b"
         self.replacers = {
+            # Bare o'clock times: the ":00" is not spoken as words, so drop it
+            # ("2:00 AM" -> "2 am"). Applied here, while the colon is still
+            # present, so that a time is distinguishable from an unrelated
+            # digit sequence — by the time symbols are stripped "3:00" and
+            # "3 00" look alike. Without this the minutes are absorbed into the
+            # hour ("3:00" -> "30") or left as a stray token ("11:00" -> "11 0").
+            r"\b(\d{1,2}):00\b": r"\1",
             # common contractions
             r"\bwon't\b": "will not",
             r"\bcan't\b": "can not",
@@ -762,7 +714,6 @@ class EnglishTextNormalizer:
             r"'m\b": " am",
         }
         self.standardize_numbers = EnglishNumberNormalizer()
-        self.standardize_times = EnglishTimeNormalizer(self.standardize_numbers)
         self.standardize_spellings = EnglishSpellingNormalizer(english_spelling_mapping)
         self.standardize_names = EnglishNameNormalizer()
         self.standardize_acronyms = EnglishAcronymNormalizer()
@@ -776,13 +727,12 @@ class EnglishTextNormalizer:
         s = re.sub(r"\(([^)]+?)\)", "", s)  # remove words between parenthesis
         s = re.sub(self.ignore_patterns, "", s)
         s = re.sub(r"\s+'", "'", s)  # standardize when there's a space before an apostrophe
-        s = self.standardize_times(s)
 
         for pattern, replacement in self.replacers.items():
             s = re.sub(pattern, replacement, s)
 
         s = re.sub(r"(\d),(\d)", r"\1\2", s)  # remove commas between digits
-        s = re.sub(r"\.(?![0-9])", " ", s)
+        s = re.sub(r"\.([^0-9]|$)", r" \1", s)  # remove periods not followed by numbers
         s = remove_symbols_and_diacritics(s, keep=".%$¢€£")  # keep some symbols for numerics
 
         # Normalize hardcoded compound words (e.g. "wi fi" -> "wifi" after hyphen removal)
@@ -795,8 +745,8 @@ class EnglishTextNormalizer:
         s = self.standardize_acronyms(s)
 
         # now remove prefix/suffix symbols that are not preceded/followed by numbers
-        s = re.sub(r"[.$¢€£](?![0-9])", " ", s)
-        s = re.sub(r"(?<![0-9])%", " ", s)
+        s = re.sub(r"[.$¢€£]([^0-9])", r" \1", s)
+        s = re.sub(r"([^0-9])%", r"\1 ", s)
 
         s = re.sub(r"\s+", " ", s)  # replace any successive whitespace characters with a space
 
